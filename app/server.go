@@ -41,6 +41,7 @@ func handleConnection(conn net.Conn) {
 	requestData := string(buffer[:n]) // trim unused buffer content
 	req, err := parseRequest(requestData)
 	path := req["path"].(string)
+	headers := req["headers"].(map[string]string)
 	handleError(err, "Error parsing request")
 
 	// route request
@@ -52,11 +53,28 @@ func handleConnection(conn net.Conn) {
 			handleError(err, "Error in rootHandler()")
 
 		case strings.HasPrefix(path, "/echo/"):
-			err := echoHandler(conn, path)
-			handleError(err, "Error in echoHandler()")
+			encoding, exists := headers["Accept-Encoding"]
+			if exists {
+				supportedEncodings := map[string]bool{"gzip": true}
+				encodings := strings.Split(encoding, ",")
+				var chosenEncoding string
+
+				for _, e := range encodings {
+					trimmedEncoding := strings.TrimSpace(e)
+					if supportedEncodings[trimmedEncoding] {
+						chosenEncoding = trimmedEncoding
+						break
+					}
+				}
+
+				err := echoHandler(conn, path, chosenEncoding)
+				handleError(err, "Error in echoHandler() with chosen encoding")
+			} else {
+				err := echoHandler(conn, path, "")
+				handleError(err, "Error in echoHandler() with no encoding")
+			}
 
 		case path == "/user-agent":
-			headers := req["headers"].(map[string]string)
 			err := userAgentHandler(conn, headers["User-Agent"])
 			handleError(err, "Error in userAgentHandler()")
 

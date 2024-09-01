@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"net"
 	"os"
@@ -25,16 +27,33 @@ func notFoundHandler(conn net.Conn) error {
 	return writeResponse(conn, response)
 }
 
-func echoHandler(conn net.Conn, path string) error {
+func echoHandler(conn net.Conn, path string, encoding string) error {
 	echoStr := strings.TrimPrefix(path, "/echo/")
 	response := HTTPResponse{
 		Status: "200 OK",
 		Headers: map[string]string{
-			"Content-Type":   "text/plain",
-			"Content-Length": fmt.Sprintf("%d", len(echoStr)),
+			"Content-Type": "text/plain",
 		},
 		Body: echoStr,
 	}
+
+	if encoding == "gzip" {
+		response.Headers["Content-Encoding"] = "gzip"
+		var compressedBody bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressedBody)
+		_, err := gzipWriter.Write([]byte(response.Body))
+		if err != nil {
+			return fmt.Errorf("failed to write to gzip writer: %w", err)
+		}
+		if err := gzipWriter.Close(); err != nil {
+			return fmt.Errorf("failed to close gzip writer: %w", err)
+		}
+		response.Body = compressedBody.String()
+		response.Headers["Content-Length"] = fmt.Sprintf("%d", compressedBody.Len())
+	} else {
+		response.Headers["Content-Length"] = fmt.Sprintf("%d", len(echoStr))
+	}
+
 	return writeResponse(conn, response)
 }
 
