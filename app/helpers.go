@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"net"
@@ -66,11 +68,34 @@ func parseRequest(input string) (map[string]interface{}, error) {
 
 }
 
-func handleError(err error, msg string) {
+func compressGzip(data string) (string, int, error) {
+	var compressedBody bytes.Buffer
+	gzipWriter := gzip.NewWriter(&compressedBody)
+
+	_, err := gzipWriter.Write([]byte(data))
 	if err != nil {
-		fmt.Println(msg+":", err.Error())
-		os.Exit(1)
+		return "", 0, fmt.Errorf("failed to write to gzip writer: %w", err)
 	}
+
+	if err := gzipWriter.Close(); err != nil {
+		return "", 0, fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	return compressedBody.String(), compressedBody.Len(), nil
+}
+
+func getSupportedEncoding(encodingHeader string) string {
+	supportedEncodings := map[string]bool{"gzip": true}
+	encodings := strings.Split(encodingHeader, ",")
+
+	for _, e := range encodings {
+		trimmedEncoding := strings.TrimSpace(e)
+		if supportedEncodings[trimmedEncoding] {
+			return trimmedEncoding
+		}
+	}
+
+	return ""
 }
 
 func writeResponse(conn net.Conn, response HTTPResponse) error {
@@ -92,4 +117,11 @@ func writeResponse(conn net.Conn, response HTTPResponse) error {
 
 	_, err := conn.Write([]byte(responseBuilder.String()))
 	return err
+}
+
+func handleError(err error, msg string) {
+	if err != nil {
+		fmt.Println(msg+":", err.Error())
+		os.Exit(1)
+	}
 }

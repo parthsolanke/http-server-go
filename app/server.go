@@ -54,25 +54,14 @@ func handleConnection(conn net.Conn) {
 
 		case strings.HasPrefix(path, "/echo/"):
 			encoding, exists := headers["Accept-Encoding"]
+			var chosenEncoding string
+
 			if exists {
-				supportedEncodings := map[string]bool{"gzip": true}
-				encodings := strings.Split(encoding, ",")
-				var chosenEncoding string
-
-				for _, e := range encodings {
-					trimmedEncoding := strings.TrimSpace(e)
-					if supportedEncodings[trimmedEncoding] {
-						chosenEncoding = trimmedEncoding
-						break
-					}
-				}
-
-				err := echoHandler(conn, path, chosenEncoding)
-				handleError(err, "Error in echoHandler() with chosen encoding")
-			} else {
-				err := echoHandler(conn, path, "")
-				handleError(err, "Error in echoHandler() with no encoding")
+				chosenEncoding = getSupportedEncoding(encoding)
 			}
+
+			err := echoHandler(conn, path, chosenEncoding)
+			handleError(err, "Error in echoHandler() with chosen encoding")
 
 		case path == "/user-agent":
 			err := userAgentHandler(conn, headers["User-Agent"])

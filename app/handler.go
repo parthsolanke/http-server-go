@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"fmt"
 	"net"
 	"os"
@@ -39,17 +37,14 @@ func echoHandler(conn net.Conn, path string, encoding string) error {
 
 	if encoding == "gzip" {
 		response.Headers["Content-Encoding"] = "gzip"
-		var compressedBody bytes.Buffer
-		gzipWriter := gzip.NewWriter(&compressedBody)
-		_, err := gzipWriter.Write([]byte(response.Body))
+
+		compressedData, compressedLength, err := compressGzip(response.Body)
 		if err != nil {
-			return fmt.Errorf("failed to write to gzip writer: %w", err)
+			return err
 		}
-		if err := gzipWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close gzip writer: %w", err)
-		}
-		response.Body = compressedBody.String()
-		response.Headers["Content-Length"] = fmt.Sprintf("%d", compressedBody.Len())
+
+		response.Body = compressedData
+		response.Headers["Content-Length"] = fmt.Sprintf("%d", compressedLength)
 	} else {
 		response.Headers["Content-Length"] = fmt.Sprintf("%d", len(echoStr))
 	}
