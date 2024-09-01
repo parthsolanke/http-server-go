@@ -1,17 +1,87 @@
 package main
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"strings"
 )
 
-func rootHandler(connection net.Conn) error {
-	defer connection.Close()
-
-	response := "HTTP/1.1 200 OK\r\n" + END_HEADER
-	_, err := connection.Write([]byte(response))
-	if err != nil {
-		return err
+func rootHandler(conn net.Conn) error {
+	response := HTTPResponse{
+		Status:  "200 OK",
+		Headers: map[string]string{},
+		Body:    "",
 	}
+	return writeResponse(conn, response)
+}
 
-	return nil
+func notFoundHandler(conn net.Conn) error {
+	response := HTTPResponse{
+		Status:  "404 Not Found",
+		Headers: map[string]string{},
+		Body:    "",
+	}
+	return writeResponse(conn, response)
+}
+
+func echoHandler(conn net.Conn, path string) error {
+	echoStr := strings.TrimPrefix(path, "/echo/")
+	response := HTTPResponse{
+		Status: "200 OK",
+		Headers: map[string]string{
+			"Content-Type":   "text/plain",
+			"Content-Length": fmt.Sprintf("%d", len(echoStr)),
+		},
+		Body: echoStr,
+	}
+	return writeResponse(conn, response)
+}
+
+func userAgentHandler(conn net.Conn, userAgent string) error {
+	response := HTTPResponse{
+		Status: "200 OK",
+		Headers: map[string]string{
+			"Content-Type":   "text/plain",
+			"Content-Length": fmt.Sprintf("%d", len(userAgent)),
+		},
+		Body: userAgent,
+	}
+	return writeResponse(conn, response)
+}
+
+func getFilesHandler(conn net.Conn, path string) error {
+	fileName := strings.TrimPrefix(path, "/files/")
+	dir := os.Args[2]
+
+	content, err := os.ReadFile(dir + fileName)
+	if err != nil {
+		return notFoundHandler(conn)
+	} else {
+		response := HTTPResponse{
+			Status: "200 OK",
+			Headers: map[string]string{
+				"Content-Type":   "application/octet-stream",
+				"Content-Length": fmt.Sprintf("%d", len(content)),
+			},
+			Body: string(content),
+		}
+		return writeResponse(conn, response)
+	}
+}
+
+func postFilesHandler(conn net.Conn, path string, content string) error {
+	fileName := strings.TrimPrefix(path, "/files/")
+	dir := os.Args[2]
+
+	if err := os.WriteFile(dir+fileName, []byte(content), 0644); err != nil {
+		return notFoundHandler(conn)
+	} else {
+		response := HTTPResponse{
+			Status:  "201 Created",
+			Headers: map[string]string{},
+			Body:    "",
+		}
+		return writeResponse(conn, response)
+	}
 }

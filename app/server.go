@@ -3,43 +3,89 @@ package main
 import (
 	"fmt"
 	"net"
-	"os"
+	"strings"
 )
 
-var END_HEADER = "\r\n "
+type HTTPResponse struct {
+	Status  string
+	Headers map[string]string
+	Body    string
+}
 
 func main() {
-	fmt.Println("My Logs: ")
+	fmt.Println("Server Logs: ")
 
+	// listen on TCP port 4221
+	// 0.0.0.0 -> all available network interfaces
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	handleError(err, "Failed to bind to port 4221")
 
-	conn, err := l.Accept()
-	handleError(err, "Error accepting connection")
+	for {
+		// accept a new connection
+		conn, err := l.Accept()
+		handleError(err, "Error accepting connection")
+
+		go handleConnection(conn)
+	}
+}
+
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
 
 	// read request
 	buffer := make([]byte, 4096)
-	_, err = conn.Read(buffer)
+	n, err := conn.Read(buffer)
 	handleError(err, "Error reading request")
 
 	// parse request
-	req, err := parseRequest(string(buffer))
+	requestData := string(buffer[:n]) // trim unused buffer content
+	req, err := parseRequest(requestData)
+	path := req["path"].(string)
 	handleError(err, "Error parsing request")
 
 	// route request
 	switch req["method"] {
 	case "GET":
-		switch req["path"] {
-		case "/":
+		switch {
+		case path == "/":
 			err := rootHandler(conn)
-			handleError(err, "Error writing response for rootHandler()")
+			handleError(err, "Error in rootHandler()")
+
+		case strings.HasPrefix(path, "/echo/"):
+			err := echoHandler(conn, path)
+			handleError(err, "Error in echoHandler()")
+
+		case path == "/user-agent":
+			headers := req["headers"].(map[string]string)
+			err := userAgentHandler(conn, headers["User-Agent"])
+			handleError(err, "Error in userAgentHandler()")
+
+		case strings.HasPrefix(path, "/files/"):
+			err := getFilesHandler(conn, path)
+			handleError(err, "Error in getFilesHandler()")
+
 		default:
-			res := "HTTP/1.1 404 Not Found\r\n" + END_HEADER
-			_, err := conn.Write([]byte(res))
-			handleError(err, "Error writing response 404")
+			err := notFoundHandler(conn)
+			handleError(err, "Error in notFoundHandler()")
+		}
+	case "POST":
+		switch {
+		case strings.HasPrefix(path, "/files/"):
+			body := req["body"].(string)
+			err := postFilesHandler(conn, path, body)
+			handleError(err, "Error in postFilesHandler()")
+
+		default:
+			err := notFoundHandler(conn)
+			handleError(err, "Error in notFoundHandler()")
 		}
 	default:
-		fmt.Println(fmt.Sprintf("%v", req["method"]) + "Method not allowed")
-		os.Exit(1)
+		res := HTTPResponse{
+			Status:  "405 Method not allowed",
+			Headers: map[string]string{},
+			Body:    "",
+		}
+		err := writeResponse(conn, res)
+		handleError(err, "Error writing response 405")
 	}
 }

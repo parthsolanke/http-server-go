@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 )
@@ -70,4 +71,25 @@ func handleError(err error, msg string) {
 		fmt.Println(msg+":", err.Error())
 		os.Exit(1)
 	}
+}
+
+func writeResponse(conn net.Conn, response HTTPResponse) error {
+	defer conn.Close()
+	var responseBuilder strings.Builder
+
+	// status
+	responseBuilder.WriteString(fmt.Sprintf("HTTP/1.1 %s\r\n", response.Status))
+	// headers and body
+	if len(response.Headers) > 0 || response.Body != "" {
+		for key, value := range response.Headers {
+			responseBuilder.WriteString(fmt.Sprintf("%s: %s\r\n", key, value))
+		}
+		responseBuilder.WriteString("\r\n") // end headers
+		responseBuilder.WriteString(response.Body)
+	} else {
+		responseBuilder.WriteString("\r\n") // end response
+	}
+
+	_, err := conn.Write([]byte(responseBuilder.String()))
+	return err
 }
